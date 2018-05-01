@@ -1,6 +1,0 @@
-{
-    "webookURL": "$WEBHOOK_URL",
-    "oAuthAccessToken": "$OAUTH_ACCESS_TOKEN",
-    "verificationToken": "$VERIFICATION_TOKEN",
-    "availableToHelpStatusText": "Available to Help"
-}
