@@ -5,18 +5,10 @@
 //  Created by Tyler Milner on 11/16/17.
 //
 
-import Foundation
-import JSON
+import Vapor
 
 /// Represents a user in a Slack workspace.
-struct SlackUser {
+struct SlackUser: Content {
     let id: String
     let profile: SlackProfile
-}
-
-extension SlackUser: JSONInitializable {
-    init(json: JSON) throws {
-        id = try json.get("id")
-        profile = try json.get("profile")
-    }
 }

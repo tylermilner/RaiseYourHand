@@ -23,4 +23,17 @@ public func configure(
     middlewares.use(DateMiddleware.self) // Adds `Date` header to responses
     middlewares.use(ErrorMiddleware.self) // Catches errors and converts to HTTP response
     services.register(middlewares)
+    
+    // Configure ContentConfig to allow for camelCase <--> snake_case conversion for JSON
+    var contentConfig = ContentConfig.default()
+    
+    let jsonEncoder = JSONEncoder()
+    jsonEncoder.keyEncodingStrategy = .convertToSnakeCase
+    
+    let jsonDecoder = JSONDecoder()
+    jsonDecoder.keyDecodingStrategy = .convertFromSnakeCase
+    
+    contentConfig.use(encoder: jsonEncoder, for: .json)
+    contentConfig.use(dataDecoder: jsonDecoder, for: .json)
+    services.register(contentConfig)
 }

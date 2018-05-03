@@ -5,18 +5,10 @@
 //  Created by Tyler Milner on 11/21/17.
 //
 
-import Foundation
-import JSON
+import Vapor
 
 /// Represents Slack's API response to a "list users" call.
-struct SlackListUsersResponse {
+struct SlackListUsersResponse: Content {
     let ok: Bool
     let members: [SlackUser]
-}
-
-extension SlackListUsersResponse: JSONInitializable {
-    init(json: JSON) throws {
-        ok = try json.get("ok")
-        members = try json.get("members")
-    }
 }
