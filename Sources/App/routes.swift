@@ -5,8 +5,150 @@ import Vapor
 ///
 /// [Learn More →](https://docs.vapor.codes/3.0/getting-started/structure/#routesswift)
 public func routes(_ router: Router) throws {
-    // Basic "Hello, world!" example
-    router.get("hello") { req in
-        return "Hello, world!"
+    
+    router.get("info") { request in
+        return request.description
     }
+    
+    router.post("slack", "events") { request in
+        guard let availableToHelpStatusText = self.config["slack", "availableToHelpStatusText"]?.string else {
+            throw Abort(.internalServerError, reason: "'availableToHelpStatusText' not properly configured in 'slack.json' config")
+        }
+        guard let json = request.json else {
+            throw Abort(.badRequest, reason: "Invalid JSON")
+        }
+        
+        let response = try SlackResponse(json: json)
+        self.log.info("Received Slack response: '\(response)'")
+        
+        try self.verifySlackToken(response.token)
+        
+        switch response.type {
+        case .urlVerification:
+            guard let challenge = response.challenge else {
+                throw Abort(.badRequest, reason: "Missing challenge")
+            }
+            
+            self.log.info("Handling Slack URL verification. Responding with challenge: '\(challenge)'")
+            
+            return challenge
+        case .eventCallback:
+            guard let event = response.event else {
+                throw Abort(.badRequest, reason: "Missing event")
+            }
+            
+            self.log.info("Handling Slack event callback: '\(event)'")
+            
+            // Only interested in the "user_change" event type (to observe status changes)
+            guard event.type == .userChange else {
+                self.log.info("Not a '\(SlackEvent.EventType.userChange.rawValue)' event. Ignoring...")
+                return Response(status: .ok)
+            }
+            
+            self.log.info("Handling '\(SlackEvent.EventType.userChange.rawValue)' event...")
+            
+            let user = event.user
+            let profile = user.profile
+            
+            // Only interested in "user_change" events changing to the "Available to Help" status
+            guard profile.statusText == availableToHelpStatusText else {
+                self.log.info("Status text was not '\(availableToHelpStatusText)'. Ignoring...")
+                return Response(status: .ok)
+            }
+            
+            self.log.info("Detected '\(availableToHelpStatusText)' status.")
+            
+            let availableToHelpMessage = "<!here> \(profile.realName) is '\(availableToHelpStatusText)'"
+            
+            self.log.info("Posting to Slack: '\(availableToHelpMessage)'")
+            
+            return try self.sendSlackMessage(message: availableToHelpMessage)
+        }
+    }
+    
+    router.post("slack", "commands", "availableToHelp") { request in
+        guard let availableToHelpStatusText = self.config["slack", "availableToHelpStatusText"]?.string else {
+            throw Abort(.internalServerError, reason: "'availableToHelpStatusText' not properly configured in 'slack.json' config")
+        }
+        guard let formURLEncoded = request.formURLEncoded else {
+            throw Abort(.badRequest, reason: "Invalid URL encoded form")
+        }
+        
+        let token: String = try formURLEncoded.get("token")
+        
+        try self.verifySlackToken(token)
+        
+        // TODO: Fix the async aspect of this. We should immediately respond with a "Checking for users..." message and then perform the actual Slack "users.list" query. Fulfill the slash command by performing a POST on the command's 'response_url'.
+        //          Slack will consider the slash command as having failed if we don't respond within 3 seconds. Luckily, querying the Slack API seems to be fast enough that we don't have to worry about this for now.
+        //            let responseURL: String = try formURLEncoded.get("response_url")
+        //            let responseText = "Checking for users that are '\(Slack.raiseHandStatusText)'..."
+        //            let commandResponse = SlackCommandResponse(responseType: .ephemeral, text: responseText)
+        
+        self.log.info("Handling 'availableToHelp' command...")
+        
+        return try Response.async({ (stream) in
+            let availableToHelpProfiles = try self.getSlackProfilesAvailableToHelp()
+            self.log.info("Users '\(availableToHelpStatusText)': '\(availableToHelpProfiles)'")
+            
+            // Build the response message containing the names of people that are "Available to Help"
+            let availableToHelpList: String = availableToHelpProfiles.reduce("", { (result, profile) -> String in
+                let userName = profile.realName
+                return result.isEmpty ? userName : "\(result)\n\(userName)"
+            })
+            let availableToHelpResponseMessage: String = availableToHelpList.isEmpty ? "No one is '\(availableToHelpStatusText)' :(" : "These people are '\(availableToHelpStatusText)':\n\n\(availableToHelpList)"
+            
+            let slashCommandResponse = try SlackCommandResponse(responseType: .inChannel, text: availableToHelpResponseMessage).makeJSON()
+            
+            self.log.info("Responding to Slack with response: '\(slashCommandResponse)'")
+            
+            stream.close(with: slashCommandResponse)
+        })
+    }
+}
+
+private func getSlackProfilesAvailableToHelp() throws -> [SlackProfile] {
+    guard let availableToHelpStatusText = self.config["slack", "availableToHelpStatusText"]?.string else {
+        throw Abort(.internalServerError, reason: "'availableToHelpStatusText' not properly configured in 'slack.json' config")
+    }
+    guard let oAuthAccessToken = self.config["slack", "oAuthAccessToken"]?.string else {
+        throw Abort(.internalServerError, reason: "'oAuthAccessToken' not properly configured in 'slack.json' config")
+    }
+    
+    log.info("Issuing '\(SlackAPI.listUsersURL)' command to Slack...")
+    
+    // Query the Slack API with the "users.list" command
+    let listUsersSlackResponse = try client.get(SlackAPI.listUsersURL, query: [:], [.authorization: "Bearer \(oAuthAccessToken)"], nil, through: [])
+    
+    // TODO: Implement support for pagination on this response. By default, Slack will currently try to include everyone's profile in the response.
+    //          Eventually, pagination will be required - https://api.slack.com/methods/users.list#pagination
+    guard let json = listUsersSlackResponse.json else {
+        throw Abort(.badRequest, reason: "Invalid response - expected JSON")
+    }
+    
+    let slackResponse = try SlackListUsersResponse(json: json)
+    
+    log.info("Slack list users response: '\(slackResponse)'")
+    
+    // Return user profiles who's status is "Available to Help"
+    let userProfiles = slackResponse.members.compactMap { $0.profile }
+    return userProfiles.filter { $0.statusText == availableToHelpStatusText }
+}
+
+private func verifySlackToken(_ token: String) throws {
+    guard let verificationToken = config["slack", "verificationToken"]?.string else {
+        throw Abort(.internalServerError, reason: "'verificationToken' not properly configured in 'slack.json' config")
+    }
+    
+    log.info("Verifying slack token: '\(token)'")
+    
+    guard token == verificationToken else { throw Abort(.badRequest, reason: "Invalid verification token") }
+}
+
+private func sendSlackMessage(message: String) throws -> ResponseRepresentable {
+    guard let webookURL = config["slack", "webookURL"]?.string else {
+        throw Abort(.internalServerError, reason: "'webookURL' not properly configured in 'slack.json' config")
+    }
+    
+    let slackMessage = SlackMessage(text: message)
+    return try client.post(webookURL, query: [:], [.contentType: "application/json"], slackMessage.makeJSON(), through: [])
 }
