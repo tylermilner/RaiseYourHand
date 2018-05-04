@@ -32,4 +32,7 @@ public func configure(
     contentConfig.use(encoder: jsonEncoder, for: .json)
     contentConfig.use(dataDecoder: jsonDecoder, for: .json)
     services.register(contentConfig)
+    
+    // Register the EnvironmentConfig so that requests have access to the environment variables
+    services.register(EnvironmentConfig.self)
 }
