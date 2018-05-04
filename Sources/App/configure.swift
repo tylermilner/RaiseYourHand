@@ -34,5 +34,6 @@ public func configure(
     services.register(contentConfig)
     
     // Register the EnvironmentConfig so that requests have access to the environment variables
-    services.register(EnvironmentConfig.self)
+    let environmentConfig = try EnvironmentConfig.default()
+    services.register(environmentConfig)
 }

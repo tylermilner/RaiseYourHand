@@ -17,6 +17,25 @@ struct EnvironmentConfig {
         case missingEnvironmentVariable(String)
     }
     
+    /// Returns the default EnvironmentConfig based on the global Environment in which the app was launched.
+    static func `default`() throws -> EnvironmentConfig {
+        let webhookURLKey = "WEBHOOK_URL"
+        let oAuthAccessTokenKey = "OAUTH_ACCESS_TOKEN"
+        let verificationTokenKey = "VERIFICATION_TOKEN"
+        let hashKeyKey = "HASH_KEY"
+        let cipherKeyKey = "CIPHER_KEY"
+        let raiseHandStatusTextKey = "RAISE_HAND_STATUS_TEXT"
+        
+        guard let webhookURL = Environment.get(webhookURLKey) else { throw Error.missingEnvironmentVariable(webhookURLKey) }
+        guard let oAuthAccessToken = Environment.get(oAuthAccessTokenKey) else { throw Error.missingEnvironmentVariable(oAuthAccessTokenKey) }
+        guard let verificationToken = Environment.get(verificationTokenKey) else { throw Error.missingEnvironmentVariable(verificationTokenKey) }
+        guard let hashKey = Environment.get(hashKeyKey) else { throw Error.missingEnvironmentVariable(hashKeyKey) }
+        guard let cipherKey = Environment.get(cipherKeyKey) else { throw Error.missingEnvironmentVariable(cipherKeyKey) }
+        guard let raiseHandStatusText = Environment.get(raiseHandStatusTextKey) else { throw Error.missingEnvironmentVariable(raiseHandStatusTextKey) }
+        
+        return EnvironmentConfig(webhookURL: webhookURL, oAuthAccessToken: oAuthAccessToken, verificationToken: verificationToken, hashKey: hashKey, cipherKey: cipherKey, raiseHandStatusText: raiseHandStatusText)
+    }
+    
     // MARK: - Properties
     
     let webhookURL: String
@@ -24,36 +43,11 @@ struct EnvironmentConfig {
     let verificationToken: String
     let hashKey: String
     let cipherKey: String
-    
-    // MARK: - Init
-    
-    init(container: Container) throws {
-        let webhookURLKey = "WEBHOOK_URL"
-        let oAuthAccessTokenKey = "OAUTH_ACCESS_TOKEN"
-        let verificationTokenKey = "VERIFICATION_TOKEN"
-        let hashKeyKey = "HASH_KEY"
-        let cipherKeyKey = "CIPHER_KEY"
-        
-        guard let webhookURL = Environment.get(webhookURLKey) else { throw Error.missingEnvironmentVariable(webhookURLKey) }
-        guard let oAuthAccessToken = Environment.get(oAuthAccessTokenKey) else { throw Error.missingEnvironmentVariable(oAuthAccessTokenKey) }
-        guard let verificationToken = Environment.get(verificationTokenKey) else { throw Error.missingEnvironmentVariable(verificationTokenKey) }
-        guard let hashKey = Environment.get(hashKeyKey) else { throw Error.missingEnvironmentVariable(hashKeyKey) }
-        guard let cipherKey = Environment.get(cipherKeyKey) else { throw Error.missingEnvironmentVariable(cipherKeyKey) }
-        
-        self.webhookURL = webhookURL
-        self.oAuthAccessToken = oAuthAccessToken
-        self.verificationToken = verificationToken
-        self.hashKey = hashKey
-        self.cipherKey = cipherKey
-    }
+    let raiseHandStatusText: String
 }
 
 extension EnvironmentConfig: ServiceType {
-    static var serviceSupports: [Any.Type] {
-        return [type(of: self)]
-    }
-    
     static func makeService(for worker: Container) throws -> EnvironmentConfig {
-        return try EnvironmentConfig(container: worker)
+        return try EnvironmentConfig.default()
     }
 }
