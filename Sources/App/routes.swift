@@ -34,7 +34,9 @@ public func routes(_ router: Router) throws {
         let logger = try request.make(Logger.self)
         
         return try request.content.decode(SlackResponse.self).map(to: String.self) { slackResponse in
-            // TODO: Verify the slack token and abort if it doesn't match what's in our config
+            logger.info("Verifying Slack token...")
+            
+            try verifySlackToken(slackResponse.token, for: request)
             
             switch slackResponse.type {
             case .urlVerification:
@@ -48,6 +50,8 @@ public func routes(_ router: Router) throws {
                 
                 return challenge
             case .eventCallback:
+                // TODO: Implement
+                
                 return "NOT IMPLEMENTED YET"
             }
         }
@@ -176,17 +180,12 @@ public func routes(_ router: Router) throws {
 //    let userProfiles = slackResponse.members.compactMap { $0.profile }
 //    return userProfiles.filter { $0.statusText == availableToHelpStatusText }
 //}
-//
-//private func verifySlackToken(_ token: String) throws {
-//    guard let verificationToken = config["slack", "verificationToken"]?.string else {
-//        throw Abort(.internalServerError, reason: "'verificationToken' not properly configured in 'slack.json' config")
-//    }
-//
-//    log.info("Verifying slack token: '\(token)'")
-//
-//    guard token == verificationToken else { throw Abort(.badRequest, reason: "Invalid verification token") }
-//}
-//
+
+private func verifySlackToken(_ token: String, for request: Request) throws {
+    let environmentConfig = try request.make(EnvironmentConfig.self)
+    guard token == environmentConfig.verificationToken else { throw Abort(.badRequest, reason: "Invalid verification token") }
+}
+
 //private func sendSlackMessage(message: String) throws -> ResponseRepresentable {
 //    guard let webookURL = config["slack", "webookURL"]?.string else {
 //        throw Abort(.internalServerError, reason: "'webookURL' not properly configured in 'slack.json' config")
