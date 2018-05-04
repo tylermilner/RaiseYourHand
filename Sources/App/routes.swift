@@ -30,13 +30,17 @@ public func routes(_ router: Router) throws {
                 // HTTP 200 OK
                 // Content-type: text/plain
                 // <value_of_challenge>
+        // Once we respond to the "url_verification" event, we will begin to receive Slack events that are ocurring in the Slack workspace
+            // If the type of the event is "user_change", then we need to check if that user changed their status text to "Available to Help"
+                // When this happens, we need to issue a POST request to the Slack webhook URL so that we post a message into the room to notify users that someone is "Available to Help"
     router.post("slack/events") { request -> Future<String> in
         let logger = try request.make(Logger.self)
+        let environmentConfig = try request.make(EnvironmentConfig.self)
         
-        return try request.content.decode(SlackResponse.self).map(to: String.self) { slackResponse in
+        return try request.content.decode(SlackResponse.self).flatMap(to: String.self) { slackResponse in
             logger.info("Verifying Slack token...")
             
-            try verifySlackToken(slackResponse.token, for: request)
+            try verifySlackToken(slackResponse.token, for: environmentConfig)
             
             switch slackResponse.type {
             case .urlVerification:
@@ -46,13 +50,46 @@ public func routes(_ router: Router) throws {
                     throw Abort(.badRequest, reason: "Missing challenge")
                 }
                 
-                logger.info("Responding to Slack URL verification with challenge: '\(challenge)'")
+                logger.info("Responding to Slack URL verification with challenge: '\(challenge)'.")
                 
-                return challenge
+                return request.eventLoop.newSucceededFuture(result: challenge)
             case .eventCallback:
-                // TODO: Implement
+                guard let event = slackResponse.event else {
+                    throw Abort(.badRequest, reason: "Missing event")
+                }
                 
-                return "NOT IMPLEMENTED YET"
+                logger.info("Handling Slack '\(event)' event...")
+                
+                // Only interested in the "user_change" event type (to observe status changes)
+                let userChangeEventType: SlackEvent.EventType = .userChange
+                guard event.type == userChangeEventType else {
+                    logger.info("Ignoring '\(event.type) event.")
+                    return request.eventLoop.newSucceededFuture(result: HTTPStatus.ok.reasonPhrase)
+                }
+                
+                logger.info("Handling \(userChangeEventType.rawValue) event...")
+                
+                let user = event.user
+                let profile = user.profile
+                
+                // Only interested in "user_change" events changing to the "Available to Help" status
+                let raiseHandStatusText = environmentConfig.raiseHandStatusText
+                guard profile.statusText == raiseHandStatusText  else {
+                    logger.info("Ignoring non-'\(raiseHandStatusText)' status text.")
+                    return request.eventLoop.newSucceededFuture(result: HTTPStatus.ok.reasonPhrase)
+                }
+                
+                logger.info("Handling '\(raiseHandStatusText)' status text...")
+                
+                let availableToHelpMessage = "<!here> \(profile.realName) is '\(raiseHandStatusText)'"
+                
+                logger.info("Posting to Slack: '\(availableToHelpMessage)'")
+                
+                let client = try request.make(Client.self)
+                
+                return try sendSlackMessage(message: availableToHelpMessage, using: client, environmentConfig: environmentConfig).flatMap(to: String.self, { response in
+                    return try response.content.decode(String.self)
+                })
             }
         }
     }
@@ -181,16 +218,13 @@ public func routes(_ router: Router) throws {
 //    return userProfiles.filter { $0.statusText == availableToHelpStatusText }
 //}
 
-private func verifySlackToken(_ token: String, for request: Request) throws {
-    let environmentConfig = try request.make(EnvironmentConfig.self)
-    guard token == environmentConfig.verificationToken else { throw Abort(.badRequest, reason: "Invalid verification token") }
+private func verifySlackToken(_ token: String, for environmentConfig: EnvironmentConfig) throws {
+    guard token == environmentConfig.verificationToken else {
+        throw Abort(.badRequest, reason: "Invalid verification token")
+    }
 }
 
-//private func sendSlackMessage(message: String) throws -> ResponseRepresentable {
-//    guard let webookURL = config["slack", "webookURL"]?.string else {
-//        throw Abort(.internalServerError, reason: "'webookURL' not properly configured in 'slack.json' config")
-//    }
-//
-//    let slackMessage = SlackMessage(text: message)
-//    return try client.post(webookURL, query: [:], [.contentType: "application/json"], slackMessage.makeJSON(), through: []) // Looks like return type from Slack is simply a String
-//}
+private func sendSlackMessage(message: String, using client: Client, environmentConfig: EnvironmentConfig) throws -> Future<Response> {
+    let slackMessage = SlackMessage(text: message)
+    return client.post(environmentConfig.webhookURL, content: slackMessage)
+}
