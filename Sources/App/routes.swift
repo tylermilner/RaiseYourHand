@@ -13,7 +13,6 @@ public func routes(_ router: Router) throws {
     }
     
     // POST /slack/events
-        // For the "Event Subscriptions" feature in the Slack App, we need to handle
         // Editing the "Request URL" in the "Event Subscriptions" feature in the configuration page for the Slack app
         // For more info, see Slack API documentation - https://api.slack.com/events/url_verification
             // Slack sends a "SlackResponse" to first authenticate with the server
@@ -75,81 +74,29 @@ public func routes(_ router: Router) throws {
                 // Only interested in "user_change" events changing to the "Available to Help" status
                 let raiseHandStatusText = environmentConfig.raiseHandStatusText
                 guard profile.statusText == raiseHandStatusText  else {
-                    logger.info("Ignoring non-'\(raiseHandStatusText)' status text.")
+                    logger.info("Ignoring non-'\(raiseHandStatusText)' status text change.")
                     return request.eventLoop.newSucceededFuture(result: HTTPStatus.ok.reasonPhrase)
                 }
                 
-                logger.info("Handling '\(raiseHandStatusText)' status text...")
+                logger.info("Handling '\(raiseHandStatusText)' status text change...")
                 
                 let availableToHelpMessage = "<!here> \(profile.realName) is '\(raiseHandStatusText)'"
                 
-                logger.info("Posting to Slack: '\(availableToHelpMessage)'")
+                logger.info("Posting to Slack: '\(availableToHelpMessage)'.")
                 
                 let client = try request.make(Client.self)
                 
-                return try sendSlackMessage(message: availableToHelpMessage, using: client, environmentConfig: environmentConfig).flatMap(to: String.self, { response in
-                    return try response.content.decode(String.self)
+                return try sendSlackMessage(message: availableToHelpMessage, using: client, environmentConfig: environmentConfig).flatMap({ (response) -> Future<String> in
+                    let slackResponse = response.http.body.description
+                    
+                    logger.info("Slack responded with: '\(slackResponse)'.")
+                    
+                    return request.eventLoop.newSucceededFuture(result: slackResponse)
                 })
             }
         }
     }
     
-//    router.post(["slack", "events"]) { request in
-//        guard let availableToHelpStatusText = self.config["slack", "availableToHelpStatusText"]?.string else {
-//            throw Abort(.internalServerError, reason: "'availableToHelpStatusText' not properly configured in 'slack.json' config")
-//        }
-//        guard let json = request.json else {
-//            throw Abort(.badRequest, reason: "Invalid JSON")
-//        }
-//
-//        let response = try SlackResponse(json: json)
-//        self.log.info("Received Slack response: '\(response)'")
-//
-//        try self.verifySlackToken(response.token)
-//
-//        switch response.type {
-//        case .urlVerification:
-//            guard let challenge = response.challenge else {
-//                throw Abort(.badRequest, reason: "Missing challenge")
-//            }
-//
-//            self.log.info("Handling Slack URL verification. Responding with challenge: '\(challenge)'")
-//
-//            return challenge
-//        case .eventCallback:
-//            guard let event = response.event else {
-//                throw Abort(.badRequest, reason: "Missing event")
-//            }
-//
-//            self.log.info("Handling Slack event callback: '\(event)'")
-//
-//            // Only interested in the "user_change" event type (to observe status changes)
-//            guard event.type == .userChange else {
-//                self.log.info("Not a '\(SlackEvent.EventType.userChange.rawValue)' event. Ignoring...")
-//                return Response(status: .ok)
-//            }
-//
-//            self.log.info("Handling '\(SlackEvent.EventType.userChange.rawValue)' event...")
-//
-//            let user = event.user
-//            let profile = user.profile
-//
-//            // Only interested in "user_change" events changing to the "Available to Help" status
-//            guard profile.statusText == availableToHelpStatusText else {
-//                self.log.info("Status text was not '\(availableToHelpStatusText)'. Ignoring...")
-//                return Response(status: .ok)
-//            }
-//
-//            self.log.info("Detected '\(availableToHelpStatusText)' status.")
-//
-//            let availableToHelpMessage = "<!here> \(profile.realName) is '\(availableToHelpStatusText)'"
-//
-//            self.log.info("Posting to Slack: '\(availableToHelpMessage)'")
-//
-//            return try self.sendSlackMessage(message: availableToHelpMessage)
-//        }
-//    }
-//
 //    router.post("slack", "commands", "availableToHelp") { request in
 //        guard let availableToHelpStatusText = self.config["slack", "availableToHelpStatusText"]?.string else {
 //            throw Abort(.internalServerError, reason: "'availableToHelpStatusText' not properly configured in 'slack.json' config")
