@@ -29,7 +29,8 @@ public func configure(
     jsonDecoder.keyDecodingStrategy = .convertFromSnakeCase
     
     contentConfig.use(encoder: jsonEncoder, for: .json)
-    contentConfig.use(dataDecoder: jsonDecoder, for: .json)
+    contentConfig.use(decoder: jsonDecoder, for: .json)
+    
     services.register(contentConfig)
     
     // Register the EnvironmentConfig so that requests have access to the environment variables
