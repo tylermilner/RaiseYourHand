@@ -13,7 +13,7 @@ public func routes(_ router: Router) throws {
     }
     
     // POST /slack/events
-        // Editing the "Request URL" in the "Event Subscriptions" feature in the configuration page for the Slack app
+        // This endpoint is triggered by editing the Slack app's "Request URL" of the "Event Subscriptions" section in Slack app configuration portal
         // For more info, see Slack API documentation - https://api.slack.com/events/url_verification
             // Slack sends a "SlackResponse" to first authenticate with the server
                 // Incoming payload from Slack looks like:
@@ -29,7 +29,7 @@ public func routes(_ router: Router) throws {
                 // HTTP 200 OK
                 // Content-type: text/plain
                 // <value_of_challenge>
-        // Once we respond to the "url_verification" event, we will begin to receive Slack events that are ocurring in the Slack workspace
+        // This endpoint is also triggered (after the "url_verification" event) when changes are made in the Slack workspace
             // If the type of the event is "user_change", then we need to check if that user changed their status text to "Available to Help"
                 // When this happens, we need to issue a POST request to the Slack webhook URL so that we post a message into the room to notify users that someone is "Available to Help"
     router.post("slack/events") { request -> Future<String> in
@@ -97,73 +97,70 @@ public func routes(_ router: Router) throws {
         }
     }
     
-//    router.post("slack", "commands", "availableToHelp") { request in
-//        guard let availableToHelpStatusText = self.config["slack", "availableToHelpStatusText"]?.string else {
-//            throw Abort(.internalServerError, reason: "'availableToHelpStatusText' not properly configured in 'slack.json' config")
-//        }
-//        guard let formURLEncoded = request.formURLEncoded else {
-//            throw Abort(.badRequest, reason: "Invalid URL encoded form")
-//        }
-//
-//        let token: String = try formURLEncoded.get("token")
-//
-//        try self.verifySlackToken(token)
-//
-//        // TODO: Fix the async aspect of this. We should immediately respond with a "Checking for users..." message and then perform the actual Slack "users.list" query. Fulfill the slash command by performing a POST on the command's 'response_url'.
-//        //          Slack will consider the slash command as having failed if we don't respond within 3 seconds. Luckily, querying the Slack API seems to be fast enough that we don't have to worry about this for now.
-//        //            let responseURL: String = try formURLEncoded.get("response_url")
-//        //            let responseText = "Checking for users that are '\(Slack.raiseHandStatusText)'..."
-//        //            let commandResponse = SlackCommandResponse(responseType: .ephemeral, text: responseText)
-//
-//        self.log.info("Handling 'availableToHelp' command...")
-//
-//        return try Response.async({ (stream) in
-//            let availableToHelpProfiles = try self.getSlackProfilesAvailableToHelp()
-//            self.log.info("Users '\(availableToHelpStatusText)': '\(availableToHelpProfiles)'")
-//
-//            // Build the response message containing the names of people that are "Available to Help"
-//            let availableToHelpList: String = availableToHelpProfiles.reduce("", { (result, profile) -> String in
-//                let userName = profile.realName
-//                return result.isEmpty ? userName : "\(result)\n\(userName)"
-//            })
-//            let availableToHelpResponseMessage: String = availableToHelpList.isEmpty ? "No one is '\(availableToHelpStatusText)' :(" : "These people are '\(availableToHelpStatusText)':\n\n\(availableToHelpList)"
-//
-//            let slashCommandResponse = try SlackCommandResponse(responseType: .inChannel, text: availableToHelpResponseMessage).makeJSON()
-//
-//            self.log.info("Responding to Slack with response: '\(slashCommandResponse)'")
-//
-//            stream.close(with: slashCommandResponse)
-//        })
-//    }
+    // POST /slack/commands/availableToHelp
+        // This command is triggered when a user types "/availabletohelp"
+            // Slack will send a URL-encoded form containing details about the origin of the command
+            // Incoming payload from Slack looks something like:
+            //        channel_id    UBBGD8OBQ
+            //        channel_name    xtest-raiseyourhand
+            //        command    /availabletohelp
+            //        response_url    https://hooks.slack.com/commands/T5GHV71RY/361569732863/mKywyu8MEUnUPZ2LkgQnY7M3
+            //        team_domain    bottlerocketstudios
+            //        team_id    T5HHV94RZ
+            //        text
+            //        token    kgs0ur776H4W29l9nk8cvJ4x
+            //        trigger_id    359624058792.181617306883.23143941fb118591836c13a13a90e9e4
+            //        user_id    U82CGLEFZ
+            //        user_name    tyler.milner
+        // Things to note are the 'token' (to verify the request actually came from Slack) and the 'response_url' (where you should send your response to the user's slash command)
+    router.post("slack/commands/availableToHelp") { (request) -> Future<SlackCommandResponse> in
+        let logger = try request.make(Logger.self)
+        let environmentConfig = try request.make(EnvironmentConfig.self)
+        
+        logger.info("Handling 'availableToHelp' command...")
+        
+        return try request.content.decode(SlackCommand.self).flatMap(to: SlackCommandResponse.self) { slackCommand in
+            logger.info("Verifying Slack token...")
+            
+            try verifySlackToken(slackCommand.token, for: environmentConfig)
+            
+            let client = try request.make(Client.self)
+            
+            logger.info("Issuing '\(SlackAPI.listUsersURL)' command to Slack...")
+            
+            // TODO: Fix the async aspect of this. We should immediately respond with a "Checking for users..." message and then perform the actual Slack "users.list" query. Fulfill the slash command by performing a POST on the command's 'response_url'.
+            //       Slack will consider the slash command as having failed if we don't respond within 3 seconds. Luckily, querying the Slack API seems to be fast enough that we don't have to worry about this for now.
+            return try getSlackProfilesAvailableToHelp(using: client, environmentConfig: environmentConfig).flatMap({ (response) -> Future<SlackCommandResponse> in
+                // TODO: Implement support for pagination on this response. By default, Slack will currently try to include everyone's profile in the response.
+                //          Eventually, pagination will be required - https://api.slack.com/methods/users.list#pagination
+                return try response.content.decode(SlackListUsersResponse.self).flatMap({ (slackListUsersResponse) -> Future<SlackCommandResponse> in
+                    logger.info("Slack list users response: '\(slackListUsersResponse)'")
+                    
+                    // Return user profiles who's status is "Available to Help"
+                    let availableToHelpStatusText = environmentConfig.raiseHandStatusText
+                    let userProfiles = slackListUsersResponse.members.compactMap { $0.profile }
+                    
+                    let availableToHelpProfiles = userProfiles.filter { $0.statusText == availableToHelpStatusText }
+                    
+                    logger.info("Users '\(availableToHelpStatusText)': '\(availableToHelpProfiles)'")
+                    
+                    // Build the response message containing the names of people that are "Available to Help"
+                    let availableToHelpList: String = availableToHelpProfiles.reduce("", { (result, profile) -> String in
+                        let userName = profile.realName
+                        return result.isEmpty ? userName : "\(result)\n\(userName)"
+                    })
+                    let availableToHelpResponseMessage: String = availableToHelpList.isEmpty ? "No one is '\(availableToHelpStatusText)' :(" : "These people are '\(availableToHelpStatusText)':\n\n\(availableToHelpList)"
+                    
+                    let slashCommandResponse = SlackCommandResponse(responseType: .inChannel, text: availableToHelpResponseMessage)
+                    
+                    logger.info("Responding to Slack with response: '\(slashCommandResponse)'")
+                    
+                    return request.eventLoop.newSucceededFuture(result: slashCommandResponse)
+                })
+            })
+        }
+    }
 }
-
-//private func getSlackProfilesAvailableToHelp() throws -> [SlackProfile] {
-//    guard let availableToHelpStatusText = self.config["slack", "availableToHelpStatusText"]?.string else {
-//        throw Abort(.internalServerError, reason: "'availableToHelpStatusText' not properly configured in 'slack.json' config")
-//    }
-//    guard let oAuthAccessToken = self.config["slack", "oAuthAccessToken"]?.string else {
-//        throw Abort(.internalServerError, reason: "'oAuthAccessToken' not properly configured in 'slack.json' config")
-//    }
-//
-//    log.info("Issuing '\(SlackAPI.listUsersURL)' command to Slack...")
-//
-//    // Query the Slack API with the "users.list" command
-//    let listUsersSlackResponse = try client.get(SlackAPI.listUsersURL, query: [:], [.authorization: "Bearer \(oAuthAccessToken)"], nil, through: [])
-//
-//    // TODO: Implement support for pagination on this response. By default, Slack will currently try to include everyone's profile in the response.
-//    //          Eventually, pagination will be required - https://api.slack.com/methods/users.list#pagination
-//    guard let json = listUsersSlackResponse.json else {
-//        throw Abort(.badRequest, reason: "Invalid response - expected JSON")
-//    }
-//
-//    let slackResponse = try SlackListUsersResponse(json: json)
-//
-//    log.info("Slack list users response: '\(slackResponse)'")
-//
-//    // Return user profiles who's status is "Available to Help"
-//    let userProfiles = slackResponse.members.compactMap { $0.profile }
-//    return userProfiles.filter { $0.statusText == availableToHelpStatusText }
-//}
 
 private func verifySlackToken(_ token: String, for environmentConfig: EnvironmentConfig) throws {
     guard token == environmentConfig.verificationToken else {
@@ -174,4 +171,9 @@ private func verifySlackToken(_ token: String, for environmentConfig: Environmen
 private func sendSlackMessage(message: String, using client: Client, environmentConfig: EnvironmentConfig) throws -> Future<Response> {
     let slackMessage = SlackMessage(text: message)
     return client.post(environmentConfig.webhookURL, content: slackMessage)
+}
+
+private func getSlackProfilesAvailableToHelp(using client: Client, environmentConfig: EnvironmentConfig) throws -> Future<Response> {
+    // Query the Slack API with the "users.list" command
+    return client.post(SlackAPI.listUsersURL, headers: ["Authorization": "Bearer \(environmentConfig.oAuthAccessToken)"], beforeSend: { _ in })
 }
