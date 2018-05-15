@@ -73,14 +73,14 @@ public func routes(_ router: Router) throws {
                 
                 // Only interested in "user_change" events changing to the "Available to Help" status
                 let raiseHandStatusText = environmentConfig.raiseHandStatusText
-                guard profile.statusText == raiseHandStatusText  else {
+                guard profile.status_text == raiseHandStatusText  else {
                     logger.info("Ignoring non-'\(raiseHandStatusText)' status text change.")
                     return request.eventLoop.newSucceededFuture(result: HTTPStatus.ok.reasonPhrase)
                 }
                 
                 logger.info("Handling '\(raiseHandStatusText)' status text change...")
                 
-                let availableToHelpMessage = "<!here> \(profile.realName) is '\(raiseHandStatusText)'"
+                let availableToHelpMessage = "<!here> \(profile.real_name) is '\(raiseHandStatusText)'"
                 
                 logger.info("Posting to Slack: '\(availableToHelpMessage)'.")
                 
@@ -140,18 +140,18 @@ public func routes(_ router: Router) throws {
                     let availableToHelpStatusText = environmentConfig.raiseHandStatusText
                     let userProfiles = slackListUsersResponse.members.compactMap { $0.profile }
                     
-                    let availableToHelpProfiles = userProfiles.filter { $0.statusText == availableToHelpStatusText }
+                    let availableToHelpProfiles = userProfiles.filter { $0.status_text == availableToHelpStatusText }
                     
                     logger.info("Users '\(availableToHelpStatusText)': '\(availableToHelpProfiles)'")
                     
                     // Build the response message containing the names of people that are "Available to Help"
                     let availableToHelpList: String = availableToHelpProfiles.reduce("", { (result, profile) -> String in
-                        let userName = profile.realName
+                        let userName = profile.real_name
                         return result.isEmpty ? userName : "\(result)\n\(userName)"
                     })
                     let availableToHelpResponseMessage: String = availableToHelpList.isEmpty ? "No one is '\(availableToHelpStatusText)' :(" : "These people are '\(availableToHelpStatusText)':\n\n\(availableToHelpList)"
                     
-                    let slashCommandResponse = SlackCommandResponse(responseType: .inChannel, text: availableToHelpResponseMessage)
+                    let slashCommandResponse = SlackCommandResponse(response_type: .inChannel, text: availableToHelpResponseMessage)
                     
                     logger.info("Responding to Slack with response: '\(slashCommandResponse)'")
                     

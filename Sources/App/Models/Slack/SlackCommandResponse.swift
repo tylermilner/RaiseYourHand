@@ -16,6 +16,6 @@ struct SlackCommandResponse: Content {
         case ephemeral = "ephemeral"
     }
     
-    let responseType: ResponseType
+    let response_type: ResponseType
     let text: String?
 }

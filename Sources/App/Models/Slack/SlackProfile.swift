@@ -10,6 +10,6 @@ import Vapor
 /// Represents a Slack user's profile.
 /// Currently, we're only interested in the profile's name and status text.
 struct SlackProfile: Content {
-    let realName: String
-    let statusText: String?
+    let real_name: String
+    let status_text: String?
 }

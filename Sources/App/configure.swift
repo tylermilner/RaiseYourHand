@@ -19,20 +19,6 @@ public func configure(
     middlewares.use(ErrorMiddleware.self) // Catches errors and converts to HTTP response
     services.register(middlewares)
     
-    // Configure ContentConfig to allow for camelCase <--> snake_case conversion for JSON
-    var contentConfig = ContentConfig.default()
-    
-    let jsonEncoder = JSONEncoder()
-    jsonEncoder.keyEncodingStrategy = .convertToSnakeCase
-    
-    let jsonDecoder = JSONDecoder()
-    jsonDecoder.keyDecodingStrategy = .convertFromSnakeCase
-    
-    contentConfig.use(encoder: jsonEncoder, for: .json)
-    contentConfig.use(decoder: jsonDecoder, for: .json)
-    
-    services.register(contentConfig)
-    
     // Register the EnvironmentConfig so that requests have access to the environment variables
     let environmentConfig = try EnvironmentConfig.default()
     services.register(environmentConfig)
