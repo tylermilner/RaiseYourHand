@@ -36,7 +36,7 @@ public func routes(_ router: Router) throws {
         let logger = try request.make(Logger.self)
         let environmentConfig = try request.make(EnvironmentConfig.self)
         
-        return try request.content.decode(SlackResponse.self).flatMap(to: String.self) { slackResponse in
+        return try request.content.decode(SlackResponse.self).flatMap { slackResponse in
             logger.info("Verifying Slack token...")
             
             try verifySlackToken(slackResponse.token, for: environmentConfig)
@@ -86,13 +86,13 @@ public func routes(_ router: Router) throws {
                 
                 let client = try request.make(Client.self)
                 
-                return try sendSlackMessage(message: availableToHelpMessage, using: client, environmentConfig: environmentConfig).flatMap({ (response) -> Future<String> in
+                return try sendSlackMessage(message: availableToHelpMessage, using: client, environmentConfig: environmentConfig).flatMap { response in
                     let slackResponse = response.http.body.description
                     
                     logger.info("Slack responded with: '\(slackResponse)'.")
                     
                     return request.eventLoop.newSucceededFuture(result: slackResponse)
-                })
+                }
             }
         }
     }
@@ -119,7 +119,7 @@ public func routes(_ router: Router) throws {
         
         logger.info("Handling 'availableToHelp' command...")
         
-        return try request.content.decode(SlackCommand.self).flatMap(to: SlackCommandResponse.self) { slackCommand in
+        return try request.content.decode(SlackCommand.self).flatMap { slackCommand in
             logger.info("Verifying Slack token...")
             
             try verifySlackToken(slackCommand.token, for: environmentConfig)
@@ -130,10 +130,10 @@ public func routes(_ router: Router) throws {
             
             // TODO: Fix the async aspect of this. We should immediately respond with a "Checking for users..." message and then perform the actual Slack "users.list" query. Fulfill the slash command by performing a POST on the command's 'response_url'.
             //       Slack will consider the slash command as having failed if we don't respond within 3 seconds. Luckily, querying the Slack API seems to be fast enough that we don't have to worry about this for now.
-            return try getSlackProfilesAvailableToHelp(using: client, environmentConfig: environmentConfig).flatMap({ (response) -> Future<SlackCommandResponse> in
+            return try getSlackProfilesAvailableToHelp(using: client, environmentConfig: environmentConfig).flatMap { response in
                 // TODO: Implement support for pagination on this response. By default, Slack will currently try to include everyone's profile in the response.
                 //          Eventually, pagination will be required - https://api.slack.com/methods/users.list#pagination
-                return try response.content.decode(SlackListUsersResponse.self).flatMap({ (slackListUsersResponse) -> Future<SlackCommandResponse> in
+                return try response.content.decode(SlackListUsersResponse.self).flatMap { slackListUsersResponse in
                     logger.info("Slack list users response: '\(slackListUsersResponse)'")
                     
                     // Return user profiles who's status is "Available to Help"
@@ -156,8 +156,8 @@ public func routes(_ router: Router) throws {
                     logger.info("Responding to Slack with response: '\(slashCommandResponse)'")
                     
                     return request.eventLoop.newSucceededFuture(result: slashCommandResponse)
-                })
-            })
+                }
+            }
         }
     }
 }
