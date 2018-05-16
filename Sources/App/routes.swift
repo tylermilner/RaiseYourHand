@@ -43,46 +43,7 @@ public func routes(_ router: Router) throws {
             case .urlVerification:
                 return try handleSlackURLVerification(for: slackResponse, request: request, logger: logger)
             case .eventCallback:
-                guard let event = slackResponse.event else {
-                    throw Abort(.badRequest, reason: "Missing event")
-                }
-                
-                logger.info("Handling Slack '\(event)' event...")
-                
-                // Only interested in the "user_change" event type (to observe status changes)
-                let userChangeEventType: SlackEvent.EventType = .userChange
-                guard event.type == userChangeEventType else {
-                    logger.info("Ignoring '\(event.type) event.")
-                    return request.eventLoop.newSucceededFuture(result: HTTPStatus.ok.reasonPhrase)
-                }
-                
-                logger.info("Handling \(userChangeEventType.rawValue) event...")
-                
-                let user = event.user
-                let profile = user.profile
-                
-                // Only interested in "user_change" events changing to the "Available to Help" status
-                let raiseHandStatusText = environmentConfig.raiseHandStatusText
-                guard profile.statusText == raiseHandStatusText  else {
-                    logger.info("Ignoring non-'\(raiseHandStatusText)' status text change.")
-                    return request.eventLoop.newSucceededFuture(result: HTTPStatus.ok.reasonPhrase)
-                }
-                
-                logger.info("Handling '\(raiseHandStatusText)' status text change...")
-                
-                let availableToHelpMessage = "<!here> \(profile.realName) is '\(raiseHandStatusText)'"
-                
-                logger.info("Posting to Slack: '\(availableToHelpMessage)'.")
-                
-                let client = try request.make(Client.self)
-                
-                return try sendSlackMessage(message: availableToHelpMessage, using: client, environmentConfig: environmentConfig).flatMap { response in
-                    let slackResponse = response.http.body.description
-                    
-                    logger.info("Slack responded with: '\(slackResponse)'.")
-                    
-                    return request.eventLoop.newSucceededFuture(result: slackResponse)
-                }
+                return try handleSlackEventCallback(for: slackResponse, request: request, environmentConfig: environmentConfig, logger: logger)
             }
         }
     }
@@ -147,6 +108,49 @@ public func routes(_ router: Router) throws {
                 }
             }
         }
+    }
+}
+
+private func handleSlackEventCallback(for slackResponse: SlackResponse, request: Request, environmentConfig: EnvironmentConfig, logger: Logger) throws -> Future<String> {
+    guard let event = slackResponse.event else {
+        throw Abort(.badRequest, reason: "Missing event")
+    }
+    
+    logger.info("Handling Slack '\(event)' event...")
+    
+    // Only interested in the "user_change" event type (to observe status changes)
+    let userChangeEventType: SlackEvent.EventType = .userChange
+    guard event.type == userChangeEventType else {
+        logger.info("Ignoring '\(event.type) event.")
+        return request.eventLoop.newSucceededFuture(result: HTTPStatus.ok.reasonPhrase)
+    }
+    
+    logger.info("Handling \(userChangeEventType.rawValue) event...")
+    
+    let user = event.user
+    let profile = user.profile
+    
+    // Only interested in "user_change" events changing to the "Available to Help" status
+    let raiseHandStatusText = environmentConfig.raiseHandStatusText
+    guard profile.statusText == raiseHandStatusText  else {
+        logger.info("Ignoring non-'\(raiseHandStatusText)' status text change.")
+        return request.eventLoop.newSucceededFuture(result: HTTPStatus.ok.reasonPhrase)
+    }
+    
+    logger.info("Handling '\(raiseHandStatusText)' status text change...")
+    
+    let availableToHelpMessage = "<!here> \(profile.realName) is '\(raiseHandStatusText)'"
+    
+    logger.info("Posting to Slack: '\(availableToHelpMessage)'.")
+    
+    let client = try request.make(Client.self)
+    
+    return try sendSlackMessage(message: availableToHelpMessage, using: client, environmentConfig: environmentConfig).flatMap { response in
+        let slackResponse = response.http.body.description
+        
+        logger.info("Slack responded with: '\(slackResponse)'.")
+        
+        return request.eventLoop.newSucceededFuture(result: slackResponse)
     }
 }
 
