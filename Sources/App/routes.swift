@@ -86,13 +86,7 @@ public func routes(_ router: Router) throws {
                     let raiseHandStatusText = environmentConfig.raiseHandStatusText
                     let availableToHelpProfiles = filterAvailableToHelpProfiles(from: slackListUsersResponse, raiseHandStatusText: raiseHandStatusText, logger: logger)
                     
-                    // Build the response message containing the names of people that are "Available to Help"
-                    let availableToHelpList: String = availableToHelpProfiles.reduce("", { (result, profile) -> String in
-                        let userName = profile.realName
-                        return result.isEmpty ? userName : "\(result)\n\(userName)"
-                    })
-                    let availableToHelpResponseMessage: String = availableToHelpList.isEmpty ? "No one is '\(raiseHandStatusText)' :(" : "These people are '\(raiseHandStatusText)':\n\n\(availableToHelpList)"
-                    
+                    let availableToHelpResponseMessage = buildAvailableToHelpListResponseMessage(from: availableToHelpProfiles, raiseHandStatusText: raiseHandStatusText)
                     let slashCommandResponse = SlackCommandResponse(responseType: .inChannel, text: availableToHelpResponseMessage)
                     
                     logger.info("Responding to Slack with response: '\(slashCommandResponse)'")
@@ -102,6 +96,15 @@ public func routes(_ router: Router) throws {
             }
         }
     }
+}
+
+private func buildAvailableToHelpListResponseMessage(from availableToHelpProfiles: [SlackProfile], raiseHandStatusText: String) -> String {
+    // Build the response message containing the names of people that are "Available to Help"
+    let availableToHelpList: String = availableToHelpProfiles.reduce("", { (result, profile) -> String in
+        let userName = profile.realName
+        return result.isEmpty ? userName : "\(result)\n\(userName)"
+    })
+    return availableToHelpList.isEmpty ? "No one is '\(raiseHandStatusText)' :(" : "These people are '\(raiseHandStatusText)':\n\n\(availableToHelpList)"
 }
 
 private func filterAvailableToHelpProfiles(from slackListUsersResponse: SlackListUsersResponse, raiseHandStatusText: String, logger: Logger) -> [SlackProfile] {
