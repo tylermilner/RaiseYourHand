@@ -41,15 +41,7 @@ public func routes(_ router: Router) throws {
             
             switch slackResponse.type {
             case .urlVerification:
-                logger.info("Handling Slack URL verfication event...")
-                
-                guard let challenge = slackResponse.challenge else {
-                    throw Abort(.badRequest, reason: "Missing challenge")
-                }
-                
-                logger.info("Responding to Slack URL verification with challenge: '\(challenge)'.")
-                
-                return request.eventLoop.newSucceededFuture(result: challenge)
+                return try handleSlackURLVerification(for: slackResponse, request: request, logger: logger)
             case .eventCallback:
                 guard let event = slackResponse.event else {
                     throw Abort(.badRequest, reason: "Missing event")
@@ -156,6 +148,18 @@ public func routes(_ router: Router) throws {
             }
         }
     }
+}
+
+private func handleSlackURLVerification(for slackResponse: SlackResponse, request: Request, logger: Logger) throws -> Future<String> {
+    logger.info("Handling Slack URL verfication event...")
+    
+    guard let challenge = slackResponse.challenge else {
+        throw Abort(.badRequest, reason: "Missing challenge")
+    }
+    
+    logger.info("Responding to Slack URL verification with challenge: '\(challenge)'.")
+    
+    return request.eventLoop.newSucceededFuture(result: challenge)
 }
 
 private func verifySlackToken(_ token: String, for environmentConfig: EnvironmentConfig, logger: Logger) throws {
