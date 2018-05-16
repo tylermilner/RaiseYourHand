@@ -83,20 +83,15 @@ public func routes(_ router: Router) throws {
                 return try response.content.decode(SlackListUsersResponse.self).flatMap { slackListUsersResponse in
                     logger.info("Slack list users response: '\(slackListUsersResponse)'")
                     
-                    // Return user profiles who's status is "Available to Help"
-                    let availableToHelpStatusText = environmentConfig.raiseHandStatusText
-                    let userProfiles = slackListUsersResponse.members.compactMap { $0.profile }
-                    
-                    let availableToHelpProfiles = userProfiles.filter { $0.statusText == availableToHelpStatusText }
-                    
-                    logger.info("Users '\(availableToHelpStatusText)': '\(availableToHelpProfiles)'")
+                    let raiseHandStatusText = environmentConfig.raiseHandStatusText
+                    let availableToHelpProfiles = filterAvailableToHelpProfiles(from: slackListUsersResponse, raiseHandStatusText: raiseHandStatusText, logger: logger)
                     
                     // Build the response message containing the names of people that are "Available to Help"
                     let availableToHelpList: String = availableToHelpProfiles.reduce("", { (result, profile) -> String in
                         let userName = profile.realName
                         return result.isEmpty ? userName : "\(result)\n\(userName)"
                     })
-                    let availableToHelpResponseMessage: String = availableToHelpList.isEmpty ? "No one is '\(availableToHelpStatusText)' :(" : "These people are '\(availableToHelpStatusText)':\n\n\(availableToHelpList)"
+                    let availableToHelpResponseMessage: String = availableToHelpList.isEmpty ? "No one is '\(raiseHandStatusText)' :(" : "These people are '\(raiseHandStatusText)':\n\n\(availableToHelpList)"
                     
                     let slashCommandResponse = SlackCommandResponse(responseType: .inChannel, text: availableToHelpResponseMessage)
                     
@@ -107,6 +102,18 @@ public func routes(_ router: Router) throws {
             }
         }
     }
+}
+
+private func filterAvailableToHelpProfiles(from slackListUsersResponse: SlackListUsersResponse, raiseHandStatusText: String, logger: Logger) -> [SlackProfile] {
+    // Return user profiles who's status is "Available to Help"
+    
+    let userProfiles = slackListUsersResponse.members.compactMap { $0.profile }
+    
+    let availableToHelpProfiles = userProfiles.filter { $0.statusText == raiseHandStatusText }
+    
+    logger.info("Users '\(raiseHandStatusText)': '\(availableToHelpProfiles)'")
+    
+    return availableToHelpProfiles
 }
 
 private func handleSlackEventCallback(for slackResponse: SlackResponse, request: Request, environmentConfig: EnvironmentConfig, logger: Logger) throws -> Future<String> {
