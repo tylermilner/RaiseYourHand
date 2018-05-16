@@ -37,9 +37,7 @@ public func routes(_ router: Router) throws {
         let environmentConfig = try request.make(EnvironmentConfig.self)
         
         return try request.content.decode(SlackResponse.self).flatMap { slackResponse in
-            logger.info("Verifying Slack token...")
-            
-            try verifySlackToken(slackResponse.token, for: environmentConfig)
+            try verifySlackToken(slackResponse.token, for: environmentConfig, logger: logger)
             
             switch slackResponse.type {
             case .urlVerification:
@@ -120,9 +118,7 @@ public func routes(_ router: Router) throws {
         logger.info("Handling 'availableToHelp' command...")
         
         return try request.content.decode(SlackCommand.self).flatMap { slackCommand in
-            logger.info("Verifying Slack token...")
-            
-            try verifySlackToken(slackCommand.token, for: environmentConfig)
+            try verifySlackToken(slackCommand.token, for: environmentConfig, logger: logger)
             
             let client = try request.make(Client.self)
             
@@ -162,7 +158,9 @@ public func routes(_ router: Router) throws {
     }
 }
 
-private func verifySlackToken(_ token: String, for environmentConfig: EnvironmentConfig) throws {
+private func verifySlackToken(_ token: String, for environmentConfig: EnvironmentConfig, logger: Logger) throws {
+    logger.info("Verifying Slack token...")
+    
     guard token == environmentConfig.verificationToken else {
         throw Abort(.badRequest, reason: "Invalid verification token")
     }
