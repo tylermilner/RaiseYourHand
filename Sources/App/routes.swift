@@ -75,11 +75,9 @@ public func routes(_ router: Router) throws {
             
             let client = try request.make(Client.self)
             
-            logger.info("Issuing '\(SlackAPI.listUsersURL)' command to Slack...")
-            
             // TODO: Fix the async aspect of this. We should immediately respond with a "Checking for users..." message and then perform the actual Slack "users.list" query. Fulfill the slash command by performing a POST on the command's 'response_url'.
             //       Slack will consider the slash command as having failed if we don't respond within 3 seconds. Luckily, querying the Slack API seems to be fast enough that we don't have to worry about this for now.
-            return try getSlackProfilesAvailableToHelp(using: client, environmentConfig: environmentConfig).flatMap { response in
+            return try getSlackUsers(using: client, environmentConfig: environmentConfig, logger: logger).flatMap { response in
                 // TODO: Implement support for pagination on this response. By default, Slack will currently try to include everyone's profile in the response.
                 //          Eventually, pagination will be required - https://api.slack.com/methods/users.list#pagination
                 return try response.content.decode(SlackListUsersResponse.self).flatMap { slackListUsersResponse in
@@ -179,7 +177,9 @@ private func sendSlackMessage(message: String, using client: Client, environment
     return client.post(environmentConfig.webhookURL, content: slackMessage)
 }
 
-private func getSlackProfilesAvailableToHelp(using client: Client, environmentConfig: EnvironmentConfig) throws -> Future<Response> {
+private func getSlackUsers(using client: Client, environmentConfig: EnvironmentConfig, logger: Logger) throws -> Future<Response> {
+    logger.info("Issuing '\(SlackAPI.listUsersURL)' command to Slack...")
+    
     // Query the Slack API with the "users.list" command
     return client.post(SlackAPI.listUsersURL, headers: ["Authorization": "Bearer \(environmentConfig.oAuthAccessToken)"], beforeSend: { _ in })
 }
