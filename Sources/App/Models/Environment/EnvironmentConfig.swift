@@ -22,18 +22,14 @@ struct EnvironmentConfig {
         let webhookURLKey = "WEBHOOK_URL"
         let oAuthAccessTokenKey = "OAUTH_ACCESS_TOKEN"
         let verificationTokenKey = "VERIFICATION_TOKEN"
-        let hashKeyKey = "HASH_KEY"
-        let cipherKeyKey = "CIPHER_KEY"
         let raiseHandStatusTextKey = "RAISE_HAND_STATUS_TEXT"
         
         guard let webhookURL = Environment.get(webhookURLKey) else { throw Error.missingEnvironmentVariable(webhookURLKey) }
         guard let oAuthAccessToken = Environment.get(oAuthAccessTokenKey) else { throw Error.missingEnvironmentVariable(oAuthAccessTokenKey) }
         guard let verificationToken = Environment.get(verificationTokenKey) else { throw Error.missingEnvironmentVariable(verificationTokenKey) }
-        guard let hashKey = Environment.get(hashKeyKey) else { throw Error.missingEnvironmentVariable(hashKeyKey) }
-        guard let cipherKey = Environment.get(cipherKeyKey) else { throw Error.missingEnvironmentVariable(cipherKeyKey) }
         guard let raiseHandStatusText = Environment.get(raiseHandStatusTextKey) else { throw Error.missingEnvironmentVariable(raiseHandStatusTextKey) }
         
-        return EnvironmentConfig(webhookURL: webhookURL, oAuthAccessToken: oAuthAccessToken, verificationToken: verificationToken, hashKey: hashKey, cipherKey: cipherKey, raiseHandStatusText: raiseHandStatusText)
+        return EnvironmentConfig(webhookURL: webhookURL, oAuthAccessToken: oAuthAccessToken, verificationToken: verificationToken, raiseHandStatusText: raiseHandStatusText)
     }
     
     // MARK: - Properties
@@ -41,8 +37,6 @@ struct EnvironmentConfig {
     let webhookURL: String
     let oAuthAccessToken: String
     let verificationToken: String
-    let hashKey: String
-    let cipherKey: String
     let raiseHandStatusText: String
 }
 
