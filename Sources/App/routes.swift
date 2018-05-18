@@ -147,19 +147,74 @@ private func handleSlackEventCallback(for slackResponse: SlackResponse, request:
     
     logger.info("Handling '\(raiseHandStatusText)' status text change...")
     
-    let availableToHelpMessage = "<!here> \(profile.realName) is '\(raiseHandStatusText)'"
+    let client = try request.make(Client.self)
+    
+    // Get all slack users groups (usergroups.list slack API call)
+    return try getSlackUserGroups(using: client, environmentConfig: environmentConfig, logger: logger).flatMap { response in
+        return try response.content.decode(SlackListUserGroupsResponse.self).flatMap { listUserGroupsResponse in
+            logger.info("Determining which group '\(profile.realName)' belongs to...")
+            
+            // Figure out the discipline that this user belongs to (which slack group they belong to)
+            let group = userGroup(correspondingTo: user, in: listUserGroupsResponse.usergroups, environmentConfig: environmentConfig)
+            
+            logger.info("User '\(profile.realName)' belongs to group '\(group?.name ?? "<no group>")'.")
+            
+            // Post the "<user> is available to help" message into the room that corresponds to that slack group
+            return try postAvailableToHelpMessage(forProfile: profile, group: group, using: client, environmentConfig: environmentConfig, logger: logger).flatMap { response in
+                let slackResponse = response.http.body.description
+                
+                logger.info("Slack responded with: '\(slackResponse)'.")
+                
+                return request.eventLoop.newSucceededFuture(result: slackResponse)
+            }
+        }
+    }
+}
+
+private func webhookURL(forGroupId groupId: String, environmentConfig: EnvironmentConfig) -> String {
+    switch groupId {
+    case environmentConfig.engGroupId:
+        return environmentConfig.engWebhookURL
+    case environmentConfig.pmGroupId:
+        return environmentConfig.pmWebhookURL
+    case environmentConfig.qaGroupId:
+        return environmentConfig.qaWebhookURL
+    case environmentConfig.xdGroupId, environmentConfig.adGroupId:
+        return environmentConfig.xdWebhookURL
+    default:
+        return environmentConfig.generalWebhookURL
+    }
+}
+
+private func postAvailableToHelpMessage(forProfile profile: SlackProfile, group: SlackUserGroup?, using client: Client, environmentConfig: EnvironmentConfig, logger: Logger) throws -> Future<Response> {
+    let url = group.flatMap { webhookURL(forGroupId: $0.id, environmentConfig: environmentConfig) } ?? environmentConfig.generalWebhookURL
+    
+    let availableToHelpMessage = "<!here> \(profile.realName) is '\(environmentConfig.raiseHandStatusText)'"
     
     logger.info("Posting to Slack: '\(availableToHelpMessage)'.")
     
-    let client = try request.make(Client.self)
+    return try sendSlackMessage(message: availableToHelpMessage, toWebhookURL: url, using: client)
+}
+
+private func userGroup(correspondingTo user: SlackUser, in userGroups: [SlackUserGroup], environmentConfig: EnvironmentConfig) -> SlackUserGroup? {
+    let disciplineUserGroups = userGroups.filter { userGroupIsDisciplineUserGroup($0, environmentConfig: environmentConfig) }
+    return disciplineUserGroups.first(where: { $0.users.contains(user.id) })
+}
+
+private func userGroupIsDisciplineUserGroup(_ userGroup: SlackUserGroup, environmentConfig: EnvironmentConfig) -> Bool {
+    let disciplineUserGroupIds = [environmentConfig.engGroupId,
+                                  environmentConfig.qaGroupId,
+                                  environmentConfig.pmGroupId,
+                                  environmentConfig.xdGroupId,
+                                  environmentConfig.adGroupId]
+    return disciplineUserGroupIds.contains(userGroup.id)
+}
+
+private func getSlackUserGroups(using client: Client, environmentConfig: EnvironmentConfig, logger: Logger) throws -> Future<Response> {
+    logger.info("Issuing '\(SlackAPI.listUserGroupsURL)' command to Slack...")
     
-    return try sendSlackMessage(message: availableToHelpMessage, using: client, environmentConfig: environmentConfig).flatMap { response in
-        let slackResponse = response.http.body.description
-        
-        logger.info("Slack responded with: '\(slackResponse)'.")
-        
-        return request.eventLoop.newSucceededFuture(result: slackResponse)
-    }
+    // Query the Slack API with the "usergroups.list" command
+    return client.get(SlackAPI.listUserGroupsURL, headers: ["Authorization": "Bearer \(environmentConfig.oAuthAccessToken)"], beforeSend: { _ in })
 }
 
 private func handleSlackURLVerification(for slackResponse: SlackResponse, request: Request, logger: Logger) throws -> Future<String> {
@@ -182,14 +237,14 @@ private func verifySlackToken(_ token: String, for environmentConfig: Environmen
     }
 }
 
-private func sendSlackMessage(message: String, using client: Client, environmentConfig: EnvironmentConfig) throws -> Future<Response> {
+private func sendSlackMessage(message: String, toWebhookURL webhookURL: String, using client: Client) throws -> Future<Response> {
     let slackMessage = SlackMessage(text: message)
-    return client.post(environmentConfig.webhookURL, content: slackMessage)
+    return client.post(webhookURL, content: slackMessage)
 }
 
 private func getSlackUsers(using client: Client, environmentConfig: EnvironmentConfig, logger: Logger) throws -> Future<Response> {
     logger.info("Issuing '\(SlackAPI.listUsersURL)' command to Slack...")
     
     // Query the Slack API with the "users.list" command
-    return client.post(SlackAPI.listUsersURL, headers: ["Authorization": "Bearer \(environmentConfig.oAuthAccessToken)"], beforeSend: { _ in })
+    return client.get(SlackAPI.listUsersURL, headers: ["Authorization": "Bearer \(environmentConfig.oAuthAccessToken)"], beforeSend: { _ in })
 }
