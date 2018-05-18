@@ -10,4 +10,5 @@ import Foundation
 /// Represents the Slack API.
 struct SlackAPI {
     static let listUsersURL = "https://slack.com/api/users.list"
+    static let listUserGroupsURL = "https://slack.com/api/usergroups.list"
 }
